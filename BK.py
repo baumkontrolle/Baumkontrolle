@@ -332,7 +332,7 @@ st.title("🌳 Baumkontroll-Protokoll Generator")
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
 st.sidebar.header("Custom Branding")
 logo_file = st.sidebar.file_uploader("Upload Logo Perusahaan (PNG/JPG)", type=["png", "jpg", "jpeg"])
-with st.expander("Pengaturan Profil Perusahaan"):
+with st.expander("Firmenprofil-Einstellungen"):
     nama_perusahaan = st.text_input("Firmennamen")
     alamat_perusahaan = st.text_input("Firmenadresse")
     email_perusahaan = st.text_input("Email")
