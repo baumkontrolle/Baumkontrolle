@@ -195,21 +195,21 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
 
         # 2.2 Satellitenbild
         if sat_url:
-    try:
-        response = requests.get(sat_url)
-        response.raise_for_status() # Prüft auf HTTP-Fehler
+            try:
+                response = requests.get(sat_url)
+                response.raise_for_status() # Prüft auf HTTP-Fehler
 
-        # Bilddaten direkt aus dem Speicher in ein Image-Objekt laden
-        img = Image.open(BytesIO(response.content))
+                # Bilddaten direkt aus dem Speicher in ein Image-Objekt laden
+                img = Image.open(BytesIO(response.content))
         
-        # In einer GUI oder Web-App anzeigen (Beispiel Streamlit)
-        # st.image(img) 
+                # In einer GUI oder Web-App anzeigen (Beispiel Streamlit)
+                # st.image(img) 
         
-        # Oder lokal zum Testen öffnen:
-        img.show()
+                # Oder lokal zum Testen öffnen:
+                img.show()
 
-    except Exception as e:
-        print(f"Fehler beim Laden des Bildes: {e}")
+        except Exception as e:
+            print(f"Fehler beim Laden des Bildes: {e}")
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
