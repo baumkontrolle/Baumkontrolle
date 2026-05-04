@@ -200,18 +200,37 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
         # 2.2 Satellitenbild
         if sat_url:
             try:
+                
+                 resp = requests.get(sat_url, timeout=15, stream=True)
+                
+                if resp.status_code == 200:
                 pdf.set_font("Helvetica", "B", 12)
                 pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
-                resp = requests.get(sat_url, timeout=10)
-                if resp.status_code == 200:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_sat:
-                        tmp_sat.write(resp.content)
-                        pdf.image(tmp_sat.name, x=105, y=bild_y, w=bild_breite)
-                    os.remove(tmp_sat.name)
-            except Exception as e:
-                pdf.set_xy(105, bild_y)
+
+                # 2. Bild verarbeiten (mit PIL zur Sicherheit)
+                img_data = Image.open(BytesIO(resp.content))
+                if img_data.mode in ("RGBA", "P"):
+                        img_data = img_data.convert("RGB")
+                        
+                # 3. Temporär speichern
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
+                    img_data.save(tmp_sat.name, format="JPEG")
+                    tmp_sat_path = tmp_sat.name
+                    
+                # 4. In PDF einfügen
+                pdf.image(tmp_sat_path, x=105, y=bild_y, w=bild_breite)
+                    
+                # 5. Datei löschen
+                os.remove(tmp_sat_path) 
+                    
+            else:
                 pdf.set_font("Helvetica", "I", 10)
-                pdf.cell(90, 10, "[Satellitenbild nicht verfügbar]", border=0)
+                pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
+            except Exception as e:
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.text(105, bild_y + 10, f"Download-Fehler: {str(e)[:30]}...")
+
+    
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
