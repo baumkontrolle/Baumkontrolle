@@ -195,31 +195,21 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
 
         # 2.2 Satellitenbild
         if sat_url:
-            try:
-                resp = requests.get(sat_url, timeout=15) # stream=True hier nicht zwingend nötig bei BytesIO
-                if resp.status_code == 200:
-                    pdf.set_font("Helvetica", "B", 12)
-                    pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
-                    
-                    # Bild verarbeiten
-                    img_data = Image.open(BytesIO(resp.content))
-                    if img_data.mode in ("RGBA", "P"):
-                        img_data = img_data.convert("RGB")                        
-                    
-                    # Temporär speichern und einfügen
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
-                        img_data.save(tmp_sat.name, format="JPEG")
-                        tmp_sat_path = tmp_sat.name                    
-                    
-                    pdf.image(tmp_sat_path, x=105, y=bild_y, w=bild_breite)                    
-                    os.remove(tmp_sat_path)                     
-                else:
-                    pdf.set_font("Helvetica", "I", 10)
-                    pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
-            except Exception as e:
-                pdf.set_font("Helvetica", "I", 8)
-                pdf.text(105, bild_y + 10, f"Download-Fehler: {str(e)[:30]}...")
+    try:
+        response = requests.get(sat_url)
+        response.raise_for_status() # Prüft auf HTTP-Fehler
 
+        # Bilddaten direkt aus dem Speicher in ein Image-Objekt laden
+        img = Image.open(BytesIO(response.content))
+        
+        # In einer GUI oder Web-App anzeigen (Beispiel Streamlit)
+        # st.image(img) 
+        
+        # Oder lokal zum Testen öffnen:
+        img.show()
+
+    except Exception as e:
+        print(f"Fehler beim Laden des Bildes: {e}")
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
@@ -477,15 +467,27 @@ if submitted:
         "Koordinaten": f"{selected_lat}, {selected_lng}" if selected_lat else "Nicht gesetzt"
     }
 
-    # Satellitenbild-URL (Alternative ohne API Key: Esri World Imagery)
-    # Nutzt die Export-Schnittstelle von ArcGIS für ein statisches Bild
-    if selected_lat and selected_lng:
-        # Erstellt eine Bounding Box um die Koordinaten für ein statisches Bild
-        delta = 0.001 
-        bbox = f"{selected_lng-delta},{selected_lat-delta},{selected_lng+delta},{selected_lat+delta}"
-        sat_url = f"https://arcgis.com{bbox}&bboxSR=4321&size=600,600&format=png&f=image"
-    else:
-        sat_url = None
+
+# Gambar satelit
+if selected_lat and selected_lng:
+    # Bounding Box um die Koordinaten
+    delta = 0.001 
+    bbox = f"{selected_lng-delta},{selected_lat-delta},{selected_lng+delta},{selected_lat+delta}"
+    
+    # Korrekte Basis-URL für den Export-Service
+    base_url = "https://arcgisonline.com"
+    
+    # Parameter sauber zusammenfügen
+    sat_url = (
+        f"{base_url}?bbox={bbox}"
+        f"&bboxSR=4326"        # Korrekter Code für WGS84
+        f"&size=600,600"
+        f"&format=png"
+        f"&f=image"
+    )
+else:
+    sat_url = None
+
 
     # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
     try:
