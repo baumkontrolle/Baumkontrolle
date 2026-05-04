@@ -222,7 +222,6 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
             except Exception as e:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
-    pdf_result = pdf.output()
     
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
