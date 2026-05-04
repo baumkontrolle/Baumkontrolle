@@ -208,8 +208,8 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
                 # Oder lokal zum Testen öffnen:
                 img.show()
 
-        except Exception as e:
-            print(f"Fehler beim Laden des Bildes: {e}")
+            except Exception as e:
+                print(f"Fehler beim Laden des Bildes: {e}")
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
