@@ -12,14 +12,10 @@ import os
 from fpdf.enums import XPos, YPos
 
 
-# --- 0. DATENBANK-FUNKTION ---
-def save_to_db(data):
-    """Saves tree inspection data to database"""
-    # TODO: Implement database storage (e.g., SQLite, PostgreSQL, Firebase)
-    pass
 
 # --- 1. PDF-ERSTELLUNG FUNKTION ---
-def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah parameter logo_file
+def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
+    # Tambah parameter logo_file
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -27,7 +23,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
     # --- LOGO PERUSAHAAN ---
     y_posisi = 10
     logo_breite = 0 # Standard, falls kein Logo da ist
-    gap = 5 # Gewünschter Abstand zwischen Text und Logo
+    gap = 3 # Gewünschter Abstand zwischen Text und Logo
 
     if logo_file is not None:
         try:
@@ -51,7 +47,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
 
     # ---DATA PERUSAHAAN (Sisi Kiri, Samping Logo) ---
     # Kita ambil data dari input user (misalnya 'Nama Perusahaan', 'Alamat', dll)
-    # Seitenbreite (210) - Ränder (20) - Logo_Breite - Gap (5)
+    # Seitenbreite (210) - Ränder (20) - Logo_Breite - Gap (3)
     text_box_breite = 210 - 20 - logo_breite - gap
     pdf.set_xy(10, y_posisi + 2) 
             
@@ -61,7 +57,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
     pdf.cell(text_box_breite, 6, nama_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R") 
     
     # Detail Tambahan (Alamat/Telp)
-    pdf.set_font("Helvetica", "", 9,)
+    pdf.set_font("Helvetica", "", 10,)
     alamat_pt = data.get("Firmenadresse", "Alamat Belum Diisi")
     pdf.cell(text_box_breite, 5, alamat_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
     
@@ -200,28 +196,30 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
         # 2.2 Satellitenbild
         if sat_url:
             try:
-                 resp = requests.get(sat_url, timeout=15, stream=True)
-                 if resp.status_code == 200:
+                resp = requests.get(sat_url, timeout=15) # stream=True hier nicht zwingend nötig bei BytesIO
+                if resp.status_code == 200:
                     pdf.set_font("Helvetica", "B", 12)
                     pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
-                # 2. Bild verarbeiten (mit PIL zur Sicherheit)
+                    
+                    # Bild verarbeiten
                     img_data = Image.open(BytesIO(resp.content))
                     if img_data.mode in ("RGBA", "P"):
                         img_data = img_data.convert("RGB")                        
-                # 3. Temporär speichern
+                    
+                    # Temporär speichern und einfügen
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
                         img_data.save(tmp_sat.name, format="JPEG")
                         tmp_sat_path = tmp_sat.name                    
-                # 4. In PDF einfügen
+                    
                     pdf.image(tmp_sat_path, x=105, y=bild_y, w=bild_breite)                    
-                # 5. Datei löschen
                     os.remove(tmp_sat_path)                     
-            else:
-                pdf.set_font("Helvetica", "I", 10)
-                pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
-    except Exception as e:
+                else:
+                    pdf.set_font("Helvetica", "I", 10)
+                    pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
+            except Exception as e:
                 pdf.set_font("Helvetica", "I", 8)
                 pdf.text(105, bild_y + 10, f"Download-Fehler: {str(e)[:30]}...")
+
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
@@ -358,14 +356,16 @@ Unterschrift = "Unterschrift"
 # --- 3. STREAMLIT UI ---
 st.set_page_config(page_title="Baumprotokoll Generator", layout="wide")
 st.title("🌳 Baumkontroll-Protokoll Generator")
+
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
+
 logo_file = st.file_uploader("Upload Logo Perusahaan (PNG/JPG)", type=["png", "jpg", "jpeg"])
+
 with st.expander("Firmenprofil-Einstellungen"):
     nama_perusahaan = st.text_input("Firmennamen")
     alamat_perusahaan = st.text_input("Firmenadresse")
     email_perusahaan = st.text_input("Email")
     Telefonnummer = st.text_input("Telefonnummer")
-
 
 
 # A. STANDORT ERFASSEN
