@@ -359,7 +359,7 @@ st.title("🌳 Baumkontroll-Protokoll Generator")
 
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
 
-logo_file = st.file_uploader("Upload Logo Perusahaan (PNG/JPG)", type=["png", "jpg", "jpeg"])
+logo_file = st.file_uploader("Unternehmenslogo hochladen (PNG/JPG)", type=["png", "jpg", "jpeg"])
 
 with st.expander("Firmenprofil-Einstellungen"):
     nama_perusahaan = st.text_input("Firmennamen")
