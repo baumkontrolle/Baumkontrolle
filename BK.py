@@ -227,21 +227,21 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
     return pdf.output()
     
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
-pdf.ln(20) # Großer Abstand nach oben
+    pdf.ln(20) # Großer Abstand nach oben
     
     # Wir erstellen eine Spalte auf der rechten Seite
     # 130 ist der X-Wert (Abstand von links), um nach rechts zu rücken
-pdf.set_x(130) 
+    pdf.set_x(130) 
     
     # Eine Linie für die Unterschrift zeichnen
-current_y = pdf.get_y()
-pdf.line(130, current_y, 200, current_y)
+    current_y = pdf.get_y()
+    pdf.line(130, current_y, 200, current_y)
     
     # Text unter die Linie schreiben
-pdf.ln(2)
-pdf.set_x(130)
-pdf.set_font("Helvetica", "I", 10)
-pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
+    pdf.ln(2)
+    pdf.set_x(130)
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
 
 
 pdf_output = pdf.output()
