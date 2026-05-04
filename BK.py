@@ -222,7 +222,10 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
             except Exception as e:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
-    return pdf.output()  # Gibt das PDF als Byte-String zurück
+                
+                pdf_output = pdf.output()
+    if isinstance(pdf_output, bytearray):
+         return bytes(pdf.output())
 
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
@@ -505,7 +508,11 @@ else:
 
     # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
     try:
-        pdf_bytes = create_pdf(data_input, image_file=uploaded_photo, sat_url=sat_url, logo_file=logo)
+        pdf_bytes = create_pdf(
+            data_input, 
+            image_file=img_file, 
+            sat_url=sat_url, 
+            logo_file=logo)
 
         st.success("✅ Protokoll bereit zum Download!")
         st.download_button(
@@ -515,7 +522,5 @@ else:
             mime="application/pdf"
         )
 
-    except Exception as e:
-        st.error(f"Fehler bei PDF-Erstellung: {e}")
     except Exception as e:
         st.error(f"Fehler bei der PDF-Erstellung: {e}")
