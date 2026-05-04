@@ -223,9 +223,14 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
                 
-                pdf_output = pdf.output()
-    if isinstance(pdf_output, bytearray):
-         return bytes(pdf.output())
+    pdf_result = pdf.output()
+
+    # 2. Sicherstellen, dass es im Format 'bytes' zurückgegeben wird
+    if isinstance(pdf_result, (bytearray, bytes)):
+        return bytes(pdf_result)
+    
+   return pdf_result 
+
 
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
