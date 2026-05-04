@@ -206,7 +206,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
                     pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
                 # 2. Bild verarbeiten (mit PIL zur Sicherheit)
                     img_data = Image.open(BytesIO(resp.content))
-                if img_data.mode in ("RGBA", "P"):
+                    if img_data.mode in ("RGBA", "P"):
                         img_data = img_data.convert("RGB")                        
                 # 3. Temporär speichern
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
