@@ -193,23 +193,38 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
             except Exception as e:
                 print(f"Error Tree Image: {e}")
 
-        # 2.2 Satellitenbild
+        # 2.2 Satellitenbild (Korrigierte Version)
         if sat_url:
             try:
-                response = requests.get(sat_url)
-                response.raise_for_status() # Prüft auf HTTP-Fehler
+                response = requests.get(sat_url, timeout=10)
+                response.raise_for_status()
 
-                # Bilddaten direkt aus dem Speicher in ein Image-Objekt laden
-                img = Image.open(BytesIO(response.content))
-        
-                # In einer GUI oder Web-App anzeigen (Beispiel Streamlit)
-                # st.image(img) 
-        
-                # Oder lokal zum Testen öffnen:
-                img.show()
+                # Bild aus dem Internet laden
+                sat_img = Image.open(BytesIO(response.content))
+                
+                # Konvertieren falls nötig (RGBA zu RGB für PDF)
+                if sat_img.mode in ("RGBA", "P"):
+                    sat_img = sat_img.convert("RGB")
+
+                # Als temporäre Datei für FPDF zwischenspeichern
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
+                    sat_img.save(tmp_sat.name, format="JPEG")
+                    
+                    pdf.set_font("Helvetica", "B", 12)
+                    pdf.text(x=105, y=bild_y - 3, text="Satelliten-Standort")
+                    # Bild auf der rechten Seite (x=105) platzieren
+                    pdf.image(tmp_sat.name, x=105, y=bild_y, w=bild_breite)
+                
+                # Datei danach löschen
+                if os.path.exists(tmp_sat.name):
+                    os.remove(tmp_sat.name)
 
             except Exception as e:
-                print(f"Fehler beim Laden des Bildes: {e}")
+                pdf.set_font("Helvetica", "I", 10)
+                pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
+
+    return pdf.output(dest='S') # Gibt das PDF als Byte-String zurück
+
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
@@ -491,12 +506,7 @@ else:
 
     # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
     try:
-        pdf_bytes = create_pdf(
-            data_for_pdf,
-            image_file=img_file,
-            sat_url=sat_url,
-            logo_file=logo_file  # Hier muss die Variable vom uploader stehen
-        )
+        pdf_bytes = create_pdf(data_input, image_file=uploaded_photo, sat_url=sat_url, logo_file=logo)
 
         st.success("✅ Protokoll bereit zum Download!")
         st.download_button(
