@@ -229,10 +229,6 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
     if isinstance(pdf_result, (bytearray, bytes)):
         return bytes(pdf_result)
     
-   return pdf_result 
-
-
-
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
     
