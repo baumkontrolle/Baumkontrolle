@@ -222,7 +222,6 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
             except Exception as e:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
-
     return pdf.output()  # Gibt das PDF als Byte-String zurück
 
 
@@ -515,5 +514,8 @@ else:
             file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
             mime="application/pdf"
         )
+
+    except Exception as e:
+        st.error(f"Fehler bei PDF-Erstellung: {e}")
     except Exception as e:
         st.error(f"Fehler bei der PDF-Erstellung: {e}")
