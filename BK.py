@@ -209,6 +209,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
                 # Als temporäre Datei für FPDF zwischenspeichern
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
                     sat_img.save(tmp_sat.name, format="JPEG")
+                    tmp_sat_path = tmp_sat.name
                     
                     pdf.set_font("Helvetica", "B", 12)
                     pdf.text(x=105, y=bild_y - 3, text="Satelliten-Standort")
@@ -222,6 +223,8 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
             except Exception as e:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
+
+     return pdf.output()
     
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
