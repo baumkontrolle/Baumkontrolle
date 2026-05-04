@@ -505,14 +505,23 @@ else:
 
 
     # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
+if st.button("Protokoll generieren"):
     try:
+        # Hier rufst du deine Funktion auf
         pdf_bytes = create_pdf(
             data_input, 
             image_file=img_file, 
             sat_url=sat_url, 
-            logo_file=logo)
-
+            logo_file=logo
+        )
+        
+        # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
+        st.session_state.pdf_ready = pdf_bytes
         st.success("✅ Protokoll bereit zum Download!")
+
+    except Exception as e:
+        st.error(f"❌ Fehler bei der PDF-Erstellung: {e}")
+
         st.download_button(
             label="📄 PDF Herunterladen",
             data=pdf_bytes,
