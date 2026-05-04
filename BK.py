@@ -219,7 +219,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
             else:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
-        except Exception as e:
+    except Exception as e:
                 pdf.set_font("Helvetica", "I", 8)
                 pdf.text(105, bild_y + 10, f"Download-Fehler: {str(e)[:30]}...")
 
