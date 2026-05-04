@@ -200,37 +200,28 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None): # Tambah pa
         # 2.2 Satellitenbild
         if sat_url:
             try:
-                
                  resp = requests.get(sat_url, timeout=15, stream=True)
-                
-                if resp.status_code == 200:
-                pdf.set_font("Helvetica", "B", 12)
-                pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
-
+                 if resp.status_code == 200:
+                    pdf.set_font("Helvetica", "B", 12)
+                    pdf.text(x=105, y=bild_y - 3, text="Standort (Satellit)")
                 # 2. Bild verarbeiten (mit PIL zur Sicherheit)
                 img_data = Image.open(BytesIO(resp.content))
                 if img_data.mode in ("RGBA", "P"):
-                        img_data = img_data.convert("RGB")
-                        
+                        img_data = img_data.convert("RGB")                        
                 # 3. Temporär speichern
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
                     img_data.save(tmp_sat.name, format="JPEG")
-                    tmp_sat_path = tmp_sat.name
-                    
+                    tmp_sat_path = tmp_sat.name                    
                 # 4. In PDF einfügen
-                pdf.image(tmp_sat_path, x=105, y=bild_y, w=bild_breite)
-                    
+                    pdf.image(tmp_sat_path, x=105, y=bild_y, w=bild_breite)                    
                 # 5. Datei löschen
-                os.remove(tmp_sat_path) 
-                    
+                    os.remove(tmp_sat_path)                     
             else:
                 pdf.set_font("Helvetica", "I", 10)
                 pdf.text(105, bild_y + 10, f"Bild-Fehler: Status {resp.status_code}")
             except Exception as e:
                 pdf.set_font("Helvetica", "I", 8)
                 pdf.text(105, bild_y + 10, f"Download-Fehler: {str(e)[:30]}...")
-
-    
 
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
     pdf.ln(20) # Großer Abstand nach oben
@@ -394,11 +385,8 @@ if map_output and map_output.get("last_clicked"):
     selected_lat = map_output["last_clicked"]["lat"]
     selected_lng = map_output["last_clicked"]["lng"]
     st.success(f"Position gewählt: {selected_lat:.5f}, {selected_lng:.5f}")
-    
-    # URL für das Satellitenbild (Beispiel mit Google - erfordert API Key)
-    # Wenn du keinen Key hast, wird das Bild im PDF einfach weggelassen
-    api_key = "DEIN_GOOGLE_MAPS_API_KEY" 
-    sat_image_url = f"https://googleapis.com{selected_lat},{selected_lng}&zoom=19&size=600x600&maptype=satellite&key={api_key}"
+    mapbox_token = "DEIN_MAPBOX_TOKEN"
+    sat_image_url = f"https://mapbox.com{selected_lng},{selected_lat},18,0/600x600?access_token={mapbox_token}"
 
         
 # B. FOTO AUFNEHMEN
