@@ -245,10 +245,10 @@ pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
 
 
 pdf_output = pdf.output()
-    if pdf.get_y() > 250: # Falls wir schon fast am Seitenende sind
-        pdf.add_page()    # Neue Seite anfangen
-    if isinstance(pdf_output, bytearray):
-         return bytes(pdf.output())
+if pdf.get_y() > 250: # Falls wir schon fast am Seitenende sind
+    pdf.add_page()    # Neue Seite anfangen
+if isinstance(pdf_output, bytearray):
+    return bytes(pdf.output())
 
 
 ## a. Liste der Bäume
