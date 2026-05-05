@@ -510,7 +510,6 @@ if st.button("Protokoll generieren"):
         
         # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
         st.session_state.pdf_ready = pdf_bytes
-        if data_for_pdf:
         st.success("✅ Protokoll bereit zum Download!")
 
         st.download_button(
