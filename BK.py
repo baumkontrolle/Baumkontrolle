@@ -517,7 +517,7 @@ if st.button("Protokoll generieren"):
 
         st.download_button(
             label="📄 PDF Herunterladen",
-            data=pdf_bytes,
+             data=pdf_bytes  if 'pdf_ready' in st.session_state else None,
             file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
             mime="application/pdf"
         )
