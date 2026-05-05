@@ -245,7 +245,7 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
     pdf_output = pdf.output()
     if pdf.get_y() > 250: # Falls wir schon fast am Seitenende sind
         pdf.add_page()    # Neue Seite anfangen
-    if isinstance(pdf_output, bytearray):
+if isinstance(pdf_output, bytearray):
 return bytes(pdf.output())
 
 
