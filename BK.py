@@ -12,7 +12,6 @@ import os
 from fpdf.enums import XPos, YPos
 
 
-
 # --- 1. PDF-ERSTELLUNG FUNKTION ---
 def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
     # Tambah parameter logo_file
@@ -227,27 +226,27 @@ def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
     return pdf.output()
     
     # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
-    pdf.ln(20) # Großer Abstand nach oben
+pdf.ln(20) # Großer Abstand nach oben
     
     # Wir erstellen eine Spalte auf der rechten Seite
     # 130 ist der X-Wert (Abstand von links), um nach rechts zu rücken
-    pdf.set_x(130) 
+pdf.set_x(130) 
     
     # Eine Linie für die Unterschrift zeichnen
-    current_y = pdf.get_y()
-    pdf.line(130, current_y, 200, current_y)
+current_y = pdf.get_y()
+pdf.line(130, current_y, 200, current_y)
     
     # Text unter die Linie schreiben
-    pdf.ln(2)
-    pdf.set_x(130)
-    pdf.set_font("Helvetica", "I", 10)
-    pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
+pdf.ln(2)
+pdf.set_x(130)
+pdf.set_font("Helvetica", "I", 10)
+pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
 
 
-    pdf_output = pdf.output()
-    if pdf.get_y() > 250: # Falls wir schon fast am Seitenende sind
-        pdf.add_page()    # Neue Seite anfangen
-        if isinstance(pdf_output, bytearray):
+pdf_output = pdf.output()
+if pdf.get_y() > 250: # Falls wir schon fast am Seitenende sind
+    pdf.add_page()    # Neue Seite anfangen
+if isinstance(pdf_output, bytearray):
             return bytes(pdf.output())
 
 
@@ -391,6 +390,146 @@ if map_output and map_output.get("last_clicked"):
     selected_lng = map_output["last_clicked"]["lng"]
     st.success(f"Position gewählt: {selected_lat:.5f}, {selected_lng:.5f}")
     mapbox_token = "DEIN_MAPBOX_TOKEN"
+    sat_image_url = f"https://mapbox.com{selected_lng},{selected_lat},18,0/600x600?access_token={mapbox_token}"
+
+        
+# B. FOTO AUFNEHMEN
+st.subheader("📸 2. Baum-Foto")
+img_file = st.camera_input("Foto aufnehmen")
+
+# C. FORMULAR
+st.subheader("📝 3. Protokoll-Details")
+with st.form("kataster_form"):
+
+    st.write("👤 **Kundendaten**")
+    kontroldatum = st.date_input("Kontrolldatum", value=date.today())   
+    kunde_name = st.text_input("Name des Kunden", key="kunde_name", value="")
+    kunde_adresse = st.text_input("Adresse des Kunden", key="kunde_adresse", value="")
+    
+
+    
+    st.divider()
+
+
+
+    st.write("🌲 **Baumdaten**")
+    search_id = st.text_input("Kataster-Nummer", key="b_id", value="")
+    baum_id = st.text_input("Baum-Nummer", key="baum_id", placeholder="z.B. B-001")
+    baumart = st.selectbox("Baumart", options=sorted(baum_optionen), key="baumart")
+    Standort = st.selectbox("Standort", options=sorted(Standort), key="Standort")
+    Baumhöhe = st.number_input("Baumhöhe (m)", min_value=0.0, step=0.1, key="baumhöhe")
+    Stammumpfang = st.number_input("Stammumfang (cm)", min_value=0.0, step=0.1, key="stammumfang")
+    Stammdurchmesser = (Stammumpfang / 3.14159) / 100  # Umrechnung von cm zu m und Berechnung des Durchmessers
+    kronendurchmesser = st.number_input("Kronendurchmesser (m)", min_value=0.0, step=0.1, key="kronendurchmesser")
+
+    
+
+    st.divider()
+
+
+
+    st.write("👁️ **Visuelle Kontrolle (Symptomerkennung)**")
+    Vitalität = st.selectbox("Vitalität", options=sorted(Vitalität), key="vitalität")
+    vWurzelbereich = st.multiselect("Wurzelbereich", options=sorted(Wurzelbereich_optionen), default=[])
+    vStammbereich = st.multiselect("Stammbereich", options=sorted(Stammbereich_optionen), default=[])
+    vKronen = st.multiselect("Kronen", options=sorted(Kronen_optionen), default=[])
+
+
+
+    st.divider()
+
+
+
+    st.write("🛠️ **Maßnahmen & Empfehlungen**")
+    maßnahmen = st.multiselect("Empfohlene Maßnahmen", options=sorted(maßnahmen_optionen), default=[])
+    kontrolrolintervall = st.selectbox("Kontrollintervall", options=sorted(Kontrollintervall), key="kontrollintervall")
+    bemerkung = st.text_area("Bemerkungen")
+    
+
+
+    # Formular abschicken
+    submitted = st.form_submit_button("📋 Protokoll generieren")
+
+
+    
+
+# --- 4. LOGIK NACH ÜBERMITTLUNG ---
+if submitted:
+        # 1. Daten sammeln
+    data_for_pdf = {
+        "Firmennamen": nama_perusahaan,
+        "Firmenadresse": alamat_perusahaan,
+        "Email Perusahaan": email_perusahaan,
+        "Telefonnummer": Telefonnummer,
+        "Kontroldatum": kontroldatum.strftime("%d.%m.%Y"),
+        "Kunde": kunde_name,
+        "Adresse": kunde_adresse,
+        "Baum-ID": baum_id,
+        "Baumart": baumart,
+        "Standort": Standort,
+        "Baumhöhe": f"{Baumhöhe} m",
+        "Stammumfang": f"{Stammumpfang} cm",
+        "Stammdurchmesser": f"{Stammdurchmesser:.2f} m",
+        "Kronendurchmesser": f"{kronendurchmesser} m",
+        "Vitalität": Vitalität,
+        "Visuallesymptome Wurzel": ", ".join(vWurzelbereich) if vWurzelbereich else "Keine gefährliche Visuelle Symptome erkannt",
+        "Visuellesymptome Stamm": ", ".join(vStammbereich) if vStammbereich  else "Keine gefährliche Visuelle Symptome erkannt",
+        "Visuallesymptome Krone": ", ".join(vKronen) if vKronen else "Keine gefährliche Visuelle Symptome erkannt",
+        "Maßnahmen": ", ".join(maßnahmen),
+        "Kontrollintervall": kontrolrolintervall,
+        "Bemerkung": bemerkung,
+        "Koordinaten": f"{selected_lat}, {selected_lng}" if selected_lat else "Nicht gesetzt"
+    }
+
+
+# Gambar satelit
+if selected_lat and selected_lng:
+    # Bounding Box um die Koordinaten
+    delta = 0.001 
+    bbox = f"{selected_lng-delta},{selected_lat-delta},{selected_lng+delta},{selected_lat+delta}"
+    
+    # Korrekte Basis-URL für den Export-Service
+    base_url = "https://arcgisonline.com"
+    
+    # Parameter sauber zusammenfügen
+    sat_url = (
+        f"{base_url}?bbox={bbox}"
+        f"&bboxSR=4326"        # Korrekter Code für WGS84
+        f"&size=600,600"
+        f"&format=png"
+        f"&f=image"
+    )
+else:
+    sat_url = None
+
+
+    # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
+if st.button("Protokoll generieren"):
+    try:
+        # Hier rufst du deine Funktion auf
+        pdf_bytes = create_pdf(
+            data_input, 
+            image_file=img_file, 
+            sat_url=sat_url, 
+            logo_file=logo
+        )
+        
+        # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
+        st.session_state.pdf_ready = pdf_bytes
+        st.success("✅ Protokoll bereit zum Download!")
+
+    except Exception as e:
+        st.error(f"❌ Fehler bei der PDF-Erstellung: {e}")
+
+        st.download_button(
+            label="📄 PDF Herunterladen",
+            data=pdf_bytes,
+            file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
+            mime="application/pdf"
+        )
+
+    except Exception as e:
+        st.error(f"Fehler bei der PDF-Erstellung: {e}")"
     sat_image_url = f"https://mapbox.com{selected_lng},{selected_lat},18,0/600x600?access_token={mapbox_token}"
 
         
