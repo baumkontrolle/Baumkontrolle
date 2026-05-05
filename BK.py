@@ -502,7 +502,7 @@ if st.button("Protokoll generieren"):
     try:
         # Hier rufst du deine Funktion auf
         pdf_bytes = create_pdf(
-            data_for_pdf, 
+            data_for_pdf=data_for_pdf, 
             image_file=img_file, 
             sat_url=sat_url, 
             logo_file=logo_file
