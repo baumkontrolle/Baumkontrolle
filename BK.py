@@ -510,14 +510,12 @@ if st.button("Protokoll generieren"):
         
         # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
         st.session_state.pdf_ready = pdf_bytes
+        if data_for_pdf:
         st.success("✅ Protokoll bereit zum Download!")
-
-    except Exception as e:
-        st.error(f"❌ Fehler bei der PDF-Erstellung: {e}")
 
         st.download_button(
             label="📄 PDF Herunterladen",
-             data=pdf_bytes  if 'pdf_ready' in st.session_state else None,
+            data=data_for_pdf
             file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
             mime="application/pdf"
         )
