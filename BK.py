@@ -527,34 +527,4 @@ if st.button("Protokoll generieren"):
             file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
             mime="application/pdf"
         )
-
-    except Exception as e:
-        st.error(f"Fehler bei der PDF-Erstellung: {e}")"
-    sat_image_url = f"https://mapbox.com{selected_lng},{selected_lat},18,0/600x600?access_token={mapbox_token}"
-
         
-# --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
-    try:
-        # Hier rufst du deine Funktion auf
-        pdf_bytes = create_pdf(
-            data_for_pdf=data_for_pdf, 
-            image_file=img_file, 
-            sat_url=sat_url, 
-            logo_file=logo_file
-        )
-        
-        # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
-        st.session_state.pdf_ready = pdf_bytes
-        st.success("✅ Protokoll bereit zum Download!")
-
-    except Exception as e:
-        st.error(f"❌ Fehler bei der PDF-Erstellung: {e}")
-
-# --- 6. Download Button (Nur anzeigen, wenn PDF fertig ist)
-if "pdf_ready" in st.session_state:
-    st.download_button(
-        label="📄 PDF Herunterladen",
-        data=st.session_state.pdf_ready,
-        file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
-        mime="application/pdf"
-    )
