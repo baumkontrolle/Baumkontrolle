@@ -518,4 +518,5 @@ if st.button("Protokoll generieren"):
             file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
             mime="application/pdf"
         )
-        
+    except Exception as e:
+        st.error(f"Fehler bei der PDF-Erstellung: {e}")
