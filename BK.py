@@ -607,7 +607,7 @@ Unterschrift = "Unterschrift"
 
 # --- 3. STREAMLIT UI ---
 st.set_page_config(page_title="Baumprotokoll Generator", layout="wide")
-st.title("🌳 Digitaler FLL-Baumkontroll-Assistent (VTA Prüfstufe 1))
+st.title("🌳 Digitaler FLL-Baumkontroll-Assistent (VTA Prüfstufe 1)")
 
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
 
