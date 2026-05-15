@@ -628,19 +628,58 @@ st.subheader("📸 Dokumentation & Standort")
 
 # Karte zum Anklicken
 st.subheader("📍 Standort auf Karte markieren")
-m = folium.Map(location=[51.16, 10.45], zoom_start=6)
-map_data = st_folium(m, width=800, height=400)
+# 1. GPS-Standort abfragen
+location = streamlit_geolocation()
 
+# 2. Start-Koordinaten festlegen (Fallback auf Deutschland, falls kein GPS)
+if "current_lat" not in st.session_state:
+    if location and location.get("latitude") and location.get("longitude"):
+        st.session_state.current_lat = location["latitude"]
+        st.session_state.current_lon = location["longitude"]
+        st.session_state.zoom = 18  # Nah ran bei GPS-Treffer
+    else:
+        st.session_state.current_lat = 51.16  # Standard Deutschland
+        st.session_state.current_lon = 10.45
+        st.session_state.zoom = 6
+
+# 3. Karte mit den aktuellen Koordinaten generieren
+m = folium.Map(
+    location=[st.session_state.current_lat, st.session_state.current_lon], 
+    zoom_start=st.session_state.zoom
+)
+
+# Marker auf die aktuelle Position setzen
+folium.Marker(
+    [st.session_state.current_lat, st.session_state.current_lon],
+    popup="Aktuelle Position",
+    icon=folium.Icon(color="red", icon="info-sign")
+).add_to(m)
+
+# 4. Karte in Streamlit anzeigen
+map_data = st_folium(m, width=800, height=400, key="peta_aktual")
+
+# 5. Logik für Klicks auf der Karte (Falls der Nutzer den Punkt manuell verschiebt)
 if map_data and map_data.get("last_clicked"):
     lat = map_data["last_clicked"]["lat"]
     lon = map_data["last_clicked"]["lng"]
     
-    # Bild von Mapbox holen und im SessionState speichern
+    # Zustand aktualisieren, damit die Karte beim Neuladen dort bleibt
+    st.session_state.current_lat = lat
+    st.session_state.current_lon = lon
+    st.session_state.zoom = 18
+    
+    # Satellitenbild via Mapbox API abrufen
     st.session_state.sat_img = get_satellite_image(lat, lon)
     
     if st.session_state.sat_img:
-        st.success("Standort erfasst und Satellitenbild bereit!")
+        st.success("Standort via Klick erfasst und Satellitenbild bereit!")
 
+# 6. Automatische Abfrage beim ersten Laden (falls GPS sofort verfügbar ist)
+elif "sat_img" not in st.session_state and location and location.get("latitude"):
+    st.session_state.sat_img = get_satellite_image(st.session_state.current_lat, st.session_state.current_lon)
+    if st.session_state.sat_img:
+        st.success("Automatischer GPS-Standort erfasst und Satellitenbild bereit!")
+        
 with st.expander("📸 Fotoaufnahme"):
     # Nutze camera_input für den direkten Zugriff auf die Handykamera
     camera_photo = st.camera_input("Baum fotografieren")
