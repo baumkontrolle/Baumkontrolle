@@ -689,13 +689,7 @@ if st.session_state.marker_position is not None:
     st.success(f"📍 Marker gesetzt bei: {st.session_state.marker_position[0]:.5f}, {st.session_state.marker_position[1]:.5f}")
 else:
     st.info("💡 Bitte klicken Sie auf einen beliebigen Punkt in der Karte, um den Marker zu setzen und das Satellitenbild zu laden.")
-
-# 6. Automatische Abfrage beim ersten Laden (falls GPS sofort verfügbar ist)
-elif "sat_img" not in st.session_state and location and location.get("latitude"):
-    st.session_state.sat_img = get_satellite_image(st.session_state.current_lat, st.session_state.current_lon)
-    if st.session_state.sat_img:
-        st.success("Automatischer GPS-Standort erfasst und Satellitenbild bereit!")
-        
+       
 with st.expander("📸 Fotoaufnahme"):
     # Nutze camera_input für den direkten Zugriff auf die Handykamera
     camera_photo = st.camera_input("Baum fotografieren")
