@@ -628,51 +628,67 @@ st.subheader("📸 Dokumentation & Standort")
 
 # Karte zum Anklicken
 st.subheader("📍 Standort auf Karte markieren")
-# 1. GPS-Standort abfragen
+# 1. GPS-Modul abfragen
 location = streamlit_geolocation()
 
-# 2. Start-Koordinaten festlegen (Fallback auf Deutschland, falls kein GPS)
-if "current_lat" not in st.session_state:
-    if location and location.get("latitude") and location.get("longitude"):
-        st.session_state.current_lat = location["latitude"]
-        st.session_state.current_lon = location["longitude"]
-        st.session_state.zoom = 18  # Nah ran bei GPS-Treffer
-    else:
-        st.session_state.current_lat = 51.16  # Standard Deutschland
-        st.session_state.current_lon = 10.45
-        st.session_state.zoom = 6
+# 2. Session-State Variablen einmalig initialisieren
+if "map_initialized" not in st.session_state:
+    st.session_state.map_initialized = False
+    st.session_state.current_lat = 51.16  # Standard-Zentrum (Deutschland)
+    st.session_state.current_lon = 10.45
+    st.session_state.zoom = 6
+    st.session_state.marker_position = None  # Zu Beginn gibt es keinen Marker!
 
-# 3. Karte mit den aktuellen Koordinaten generieren
+# 3. Einmalige automatische Zentrierung auf den GPS-Standort beim Start
+if not st.session_state.map_initialized and location and location.get("latitude") and location.get("longitude"):
+    st.session_state.current_lat = location["latitude"]
+    st.session_state.current_lon = location["longitude"]
+    st.session_state.zoom = 17  # Angenehmer Zoom für die Übersicht
+    st.session_state.map_initialized = True
+
+# 4. Karte mit den aktuellen Fokus-Koordinaten erstellen
 m = folium.Map(
     location=[st.session_state.current_lat, st.session_state.current_lon], 
     zoom_start=st.session_state.zoom
 )
 
-# Marker auf die aktuelle Position setzen
-folium.Marker(
-    [st.session_state.current_lat, st.session_state.current_lon],
-    popup="Aktuelle Position",
-    icon=folium.Icon(color="red", icon="info-sign")
-).add_to(m)
+# 5. Marker NUR zeichnen, wenn der Nutzer bereits geklickt hat
+if st.session_state.marker_position is not None:
+    folium.Marker(
+        location=st.session_state.marker_position,
+        popup="Geklickter Standort",
+        icon=folium.Icon(color="red", icon="info-sign")
+    ).add_to(m)
 
-# 4. Karte in Streamlit anzeigen
-map_data = st_folium(m, width=800, height=400, key="peta_aktual")
+# 6. Karte in Streamlit anzeigen
+map_data = st_folium(m, width=800, height=400, key="peta_klick_marker")
 
-# 5. Logik für Klicks auf der Karte (Falls der Nutzer den Punkt manuell verschiebt)
+# 7. Klick-Logik: Marker setzen, wenn der Nutzer auf die Karte klickt
 if map_data and map_data.get("last_clicked"):
-    lat = map_data["last_clicked"]["lat"]
-    lon = map_data["last_clicked"]["lng"]
+    click_lat = map_data["last_clicked"]["lat"]
+    click_lon = map_data["last_clicked"]["lng"]
     
-    # Zustand aktualisieren, damit die Karte beim Neuladen dort bleibt
-    st.session_state.current_lat = lat
-    st.session_state.current_lon = lon
-    st.session_state.zoom = 18
-    
-    # Satellitenbild via Mapbox API abrufen
-    st.session_state.sat_img = get_satellite_image(lat, lon)
-    
-    if st.session_state.sat_img:
-        st.success("Standort via Klick erfasst und Satellitenbild bereit!")
+    # Prüfen, ob sich der Klick von der aktuellen Marker-Position unterscheidet
+    current_marker = st.session_state.marker_position
+    if current_marker is None or current_marker[0] != click_lat or current_marker[1] != click_lon:
+        # Marker-Position auf die geklickten Koordinaten setzen
+        st.session_state.marker_position = [click_lat, click_lon]
+        
+        # Karte für den nächsten Render-Zyklus auf diesen Punkt zentrieren
+        st.session_state.current_lat = click_lat
+        st.session_state.current_lon = click_lon
+        st.session_state.zoom = 18  # Nah ranzoomen für das Satellitenbild
+        st.session_state.map_initialized = True  # Verhindert GPS-Überschreibung
+        
+        # Satellitenbild via Mapbox API für die geklickte Stelle holen
+        st.session_state.sat_img = get_satellite_image(click_lat, click_lon)
+        st.rerun()  # Streamlit sofort neu starten, um den Marker zu zeichnen
+
+# 8. Erfolgsmeldung und visuelles Feedback
+if st.session_state.marker_position is not None:
+    st.success(f"📍 Marker gesetzt bei: {st.session_state.marker_position[0]:.5f}, {st.session_state.marker_position[1]:.5f}")
+else:
+    st.info("💡 Bitte klicken Sie auf einen beliebigen Punkt in der Karte, um den Marker zu setzen und das Satellitenbild zu laden.")
 
 # 6. Automatische Abfrage beim ersten Laden (falls GPS sofort verfügbar ist)
 elif "sat_img" not in st.session_state and location and location.get("latitude"):
