@@ -1,248 +1,433 @@
+from pandas.io.formats import style
 import streamlit as st
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 from datetime import date
 import folium
 from streamlit_folium import st_folium
+from streamlit_geolocation import streamlit_geolocation
 from folium.plugins import LocateControl
 import tempfile
 import requests
-from io import BytesIO
+import json
+import base64
+import io
+from io import BytesIO  
 from PIL import Image
 import os
-from fpdf.enums import XPos, YPos
+import uuid
 
 
-# --- 1. PDF-ERSTELLUNG FUNKTION ---
-def create_pdf(data, image_file=None, sat_url=None, logo_file=None):
-    # Tambah parameter logo_file
+
+# --- 1. SETZE DEINEN MAPBOX TOKEN HIER EIN ---
+MAPBOX_TOKEN = st.secrets["MAPBOX_TOKEN"]
+
+
+def get_satellite_image(lat, lon, zoom=18):
+    # Den Style explizit als String definieren
+    style_id = "mapbox/satellite-v9"
+    marker = f"pin-s+ff0000({lon},{lat})"
+    
+    # URL ohne das Token am Ende zusammenbauen (wird via params sauber angehängt)
+    url = f"https://api.mapbox.com/styles/v1/{style_id}/static/{marker}/{lon},{lat},{zoom},0/600x400"
+
+    params = {
+        "access_token": MAPBOX_TOKEN
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 200:
+            return BytesIO(response.content)
+        else:
+            st.error(f"Mapbox API Fehler {response.status_code}: {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Netzwerkfehler: {e}")
+        return None
+    
+# --- 2. PDF-ERSTELLUNG FUNKTION ---
+def create_pdf(data, image_file=None, logo_file=None, map_image_stream=None):
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    temp_files = []
+    # ==============
+    # Page & Margin
+    # ==============
+    LEFT_MARGIN = 17.8
+    RIGHT_MARGIN = 17.8
+    TOP_MARGIN = 19.1
+    BOTTOM_MARGIN = 19.1
+
+    PAGE_WIDTH = 210
+    PAGE_HEIGHT = 297
+
+    CONTENT_WIDTH = PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN
+
+    pdf.set_margins(
+    left=LEFT_MARGIN,
+    top=TOP_MARGIN,
+    right=RIGHT_MARGIN
+    )
+
+    pdf.set_auto_page_break(
+        auto=True,
+        margin=BOTTOM_MARGIN
+        )
+    
     pdf.add_page()
     
-    # --- LOGO PERUSAHAAN ---
-    y_posisi = 10
-    logo_breite = 0 # Standard, falls kein Logo da ist
-    gap = 3 # Gewünschter Abstand zwischen Text und Logo
-
+    y_posisi = TOP_MARGIN
+    logo_breite = 40
+    
+    # --- HEADER: LOGO & FIRMENINFO ---
     if logo_file is not None:
         try:
-            # Gunakan PIL untuk memproses gambar langsung dari memori
             img = Image.open(logo_file)
-            logo_breite = 40
-
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_logo:
-                img.save(tmp_logo.name, format="JPEG")
-                pdf.image(tmp_logo.name, x=160, y=10, w=35)
-                # Tutup file sebelum dihapus (penting untuk Windows)
-                x_logo = 200 - logo_breite 
-                pdf.image(tmp_logo.name, x=x_logo, y=y_posisi, w=logo_breite)
-        except Exception as e:
-            logo_breite = 0
-            pdf.set_font("Helvetica", "I", 8)
-            pdf.text(160, 8, "Logo-Format Fehler")
-
-    # ---DATA PERUSAHAAN (Sisi Kiri, Samping Logo) ---
-    # Kita ambil data dari input user (misalnya 'Nama Perusahaan', 'Alamat', dll)
-    # Seitenbreite (210) - Ränder (20) - Logo_Breite - Gap (3)
-    text_box_breite = 210 - 20 - logo_breite - gap
-    pdf.set_xy(10, y_posisi + 2) 
             
-    # Nama Perusahaan (Ambil dari data yang dikirim user)
-    pdf.set_font("Helvetica", "B", 11,) 
-    nama_pt = data.get("Firmennamen", "Nama Perusahaan Anda")
-    pdf.cell(text_box_breite, 6, nama_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R") 
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                img.save(tmp.name, format="JPEG")
+                tmp_path = tmp.name
+
+            temp_files.append(tmp_path)
+
+            pdf.image(tmp_path,
+                x=PAGE_WIDTH - RIGHT_MARGIN - logo_breite,
+                y=y_posisi,
+                w=logo_breite
+                )
+                
+            os.unlink(tmp_path)
+
+        except Exception as e:
+            print(f"Logo-Fehler: {e}")
     
-    # Detail Tambahan (Alamat/Telp)
-    pdf.set_font("Helvetica", "", 10,)
-    alamat_pt = data.get("Firmenadresse", "Alamat Belum Diisi")
-    pdf.cell(text_box_breite, 5, alamat_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
+    # Firmeninfos links vom Logo
+    pdf.set_xy(LEFT_MARGIN, TOP_MARGIN)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font("Helvetica", "", 10)
+    text_box_breite = (
+        PAGE_WIDTH - LEFT_MARGIN - RIGHT_MARGIN - logo_breite - 3
+    )
     
-    email_pt = data.get("Email Perusahaan", "email@perusahaan.com")
-    pdf.cell(text_box_breite, 5, email_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
+    pdf.cell(text_box_breite, 5, data.get("Firmennamen", "Mein Unternehmen"), new_x=XPos.LEFT, new_y=YPos.NEXT, align="R")
+    pdf.cell(text_box_breite, 5, data.get("Firmenadresse", ""), new_x=XPos.LEFT, new_y=YPos.NEXT, align="R")
+    pdf.cell(text_box_breite, 5, data.get("Email Perusahaan", ""), new_x=XPos.LEFT, new_y=YPos.NEXT, align="R")
+    pdf.cell(text_box_breite, 5, data.get("Telefonnummer", ""), new_x=XPos.LEFT, new_y=YPos.NEXT, align="R")
 
-    telp_pt = data.get("Telefonnummer", "Telp: -")
-    pdf.cell(text_box_breite, 5, telp_pt, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
-
-
-#tanpa gris pembartas, langsung ke judul utama dan konten lainnya
-
-    # --- 1. JUDUL UTAMA (Di bawah Header) ---
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 15, "Baumkontrolle VTA I", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
-    
-    # --- 2. KUNDENDATEN ---
-    pdf.ln(5)
+    # --- TITEL ---
+    pdf.ln(10)
     pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Baumkontrolle (VTA I) nach FLL-Richtlinien", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
+    
+    # --- KUNDENDATEN ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 10, "Kundendaten", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(2)
+    pdf.line(LEFT_MARGIN,
+             pdf.get_y(),
+             PAGE_WIDTH - RIGHT_MARGIN,
+             pdf.get_y()
+             )
+    
+    pdf.ln(3)
 
-    label_w_head = 20  # Lebar label untuk Kundendaten
-    kundendaten_felder = [("Datum", "Kontroldatum"), ("Kunde", "Kunde"),  ("Adresse", "Adresse")]
+    kundendaten_felder = [("Datum", "Kontroldatum"), ("Kunde", "Kunde"), ("Adresse", "Adresse")]
     for label, key in kundendaten_felder:
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(label_w_head, 8, f"{label}:") 
+        pdf.cell(30, 8, f"{label}:") 
         pdf.set_font("Helvetica", "", 11)
         pdf.cell(0, 8, str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    # --- 3. BAUMDATEN (Zwei Spalten) ---
+    # --- BAUMDATEN ---
     pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 10, "Baumdaten", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.line(LEFT_MARGIN,
+             pdf.get_y(),
+             PAGE_WIDTH - RIGHT_MARGIN,
+             pdf.get_y()
+             )
+    
     pdf.ln(3)
 
     y_start_baum = pdf.get_y()
-    label_w_col = 20 
-
     # Linke Spalte
-    pdf.set_y(y_start_baum)
     kiri = [("Baum-ID", "Baum-ID"), ("Baumart", "Baumart"), ("Standort", "Standort")]
     for label, key in kiri:
-        pdf.set_x(10)
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(label_w_col, 8, f"{label}:") 
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(50, 8, str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_x(LEFT_MARGIN)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(25, 7, f"{label}:")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(60, 7, text=str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Rechte Spalte
     pdf.set_y(y_start_baum)
     kanan = [("Höhe", "Baumhöhe"), ("Umfang", "Stammumfang"), ("Ø Stamm", "Stammdurchmesser"), ("Ø Krone", "Kronendurchmesser")]
     for label, key in kanan:
-        pdf.set_x(105)
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(label_w_col, 8, f"{label}:")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(50, 8, str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_x(125)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(25, 7, f"{label}:")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(60, 7, text=str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    pdf.set_y(y_start_baum + 40)  # Pindah ke bawah untuk bagian selanjutnya
-
-    # --- 4. SEKTIONEN (Nur einmal ausführen!) ---
-    sektionen = [
-        ("Visuelle Kontrolle (Symptomerkennung)", ["Vitalität", "Visuallesymptome Wurzel", "Visuellesymptome Stamm", "Visuallesymptome Krone"]),
-        ("Maßnahmen & Empfehlungen", ["Maßnahmen", "Kontrollintervall", "Bemerkung", "Koordinaten", "logo_file"])
-    ]
-
-    for titel, keys in sektionen:
-        pdf.ln(5)
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, titel, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.ln(2)
-
-        for key in keys:
-            if key in data:
-                wert = data[key]
-                
-                # 1. Komma-String in Liste umwandeln (falls nötig)
-                if isinstance(wert, str) and "," in wert:
-                    wert = [i.strip() for i in wert.split(",")]
-
-                # 2. Label drucken (Helvetica statt Arial wegen der Warnung)
-                pdf.set_font("Helvetica", "B", 11)
-                pdf.cell(0, 8, f"{key}:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                
-                pdf.set_font("Helvetica", "", 11)
-                
-                # 3. Inhalt prüfen und drucken
-                if isinstance(wert, list) and wert:
-                    # SCHLEIFE: Hier existiert 'item'
-                    for item in wert:
-                        if str(item).strip():
-                            pdf.set_x(15)
-                            # WICHTIG: Bindestrich statt Punkt nutzen!
-                            pdf.multi_cell(0, 7, text=f"- {item}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                else:
-                    # KEINE SCHLEIFE: Hier gibt es kein 'item'!
-                    pdf.set_x(15)
-                    # Wir nutzen 'inhalt', um den Wert sicher zu formatieren
-                    inhalt = str(wert) if wert and str(wert).strip() not in ["", "-", "None"] else "Keine Angabe"
-                    pdf.multi_cell(0, 7, text=inhalt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-                
-                pdf.ln(2)
-
-
-    # --- SEITE 2: BILDER NEBENEINANDER ---
-
-    if image_file or sat_url:
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, "Dokumentation (Bilder)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.ln(10)
-        
-        # Koordinaten für diese neue Seite setzen
-        text_y = pdf.get_y()
-        bild_y = text_y + 10
-        bild_breite = 90
-
-        # 2.1 Foto vom Baum
-        if image_file is not None:
-            try:
-                image_file.seek(0)
-                pdf.set_font("Helvetica", "B", 12)
-                pdf.text(x=10, y=bild_y - 3, text="Baum-Foto")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                    tmp.write(image_file.read())
-                    pdf.image(tmp.name, x=10, y=bild_y, w=bild_breite)
-                os.remove(tmp.name)
-            except Exception as e:
-                print(f"Error Tree Image: {e}")
-
-        # 2.2 Satellitenbild (Korrigierte Version)
-        if sat_url:
-            try:
-                response = requests.get(sat_url, timeout=10)
-                response.raise_for_status()
-
-                # Bild aus dem Internet laden
-                sat_img = Image.open(BytesIO(response.content))
-                
-                # Konvertieren falls nötig (RGBA zu RGB für PDF)
-                if sat_img.mode in ("RGBA", "P"):
-                    sat_img = sat_img.convert("RGB")
-
-                # Als temporäre Datei für FPDF zwischenspeichern
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_sat:
-                    sat_img.save(tmp_sat.name, format="JPEG")
-                    tmp_sat_path = tmp_sat.name
-                    
-                    pdf.set_font("Helvetica", "B", 12)
-                    pdf.text(x=105, y=bild_y - 3, text="Satelliten-Standort")
-                    # Bild auf der rechten Seite (x=105) platzieren
-                    pdf.image(tmp_sat.name, x=105, y=bild_y, w=bild_breite)
-                
-                # Datei danach löschen
-                if os.path.exists(tmp_sat.name):
-                    os.remove(tmp_sat.name)
-
-            except Exception as e:
-                pdf.set_font("Helvetica", "I", 10)
-                pdf.text(x=105, y=bild_y + 10, text=f"Sat-Bild Fehler: {e}")
-
-    return pdf.output()
+    # --- Visuelle Kontrolle ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, "Visuelle Kontrolle", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.line(LEFT_MARGIN,
+             pdf.get_y(),
+             PAGE_WIDTH - RIGHT_MARGIN,
+             pdf.get_y()
+             )
     
-    # --- UNTERSCHRIFTENFELD (Ganz am Ende) ---
-    pdf.ln(20) # Großer Abstand nach oben
+    pdf.ln(3)
+
+    def format_list_text(wert):
+        if not wert or str(wert).strip() == "-":
+            return "Keine gefährliche Visuelle Symptome erkannt"
+
+        if isinstance(wert, str):
+            liste = [item.strip() for item in wert.split(",") if item.strip()]
+        elif isinstance(wert, list):
+            liste = [str(item).strip() for item in wert if str(item).strip()]
+        else:
+            return f"{str(wert)}"
+
+        return "\n".join(f"- {item}" for item in liste)
     
-    # Wir erstellen eine Spalte auf der rechten Seite
-    # 130 ist der X-Wert (Abstand von links), um nach rechts zu rücken
-    pdf.set_x(130) 
+
+    Visuelle = [ ("Entwicklungsphase", "Entwicklungsphase"),
+        ("Vitalität", "Vitalität"),
+        ("Verkehrssicherheit", "Verkehrssicherheit"),
+        ]
     
-    # Eine Linie für die Unterschrift zeichnen
-    current_y = pdf.get_y()
-    pdf.line(130, current_y, 200, current_y)
+    for label, key in Visuelle:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(55, 7, f"{label}:") 
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     
-    # Text unter die Linie schreiben
+    Kontrolle = [
+        ("Visuellesymptome Wurzel", "Visuellesymptome Wurzel"), 
+        ("Visuellesymptome Stamm", "Visuellesymptome Stamm"), 
+        ("Visuellesymptome Krone", "Visuellesymptome Krone")
+        ]
+       
+    pdf.set_x(LEFT_MARGIN)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(90, 7, "Visuellesymptome Wurzel:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_x(LEFT_MARGIN + 5)
+    wert_wurzel = data.get("Visuellesymptome Wurzel", []) or []
+    inhalt_wurzel = format_list_text(wert_wurzel)
+    pdf.multi_cell(85, 6, inhalt_wurzel, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
     pdf.ln(2)
-    pdf.set_x(130)
-    pdf.set_font("Helvetica", "I", 10)
-    pdf.cell(70, 8, "Unterschrift Prüfer", ln=True, align="C")
+    pdf.set_x(LEFT_MARGIN)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(90, 7, "Visuellesymptome Stamm:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_x(LEFT_MARGIN + 5)
+    wert_stamm = data.get("Visuellesymptome Stamm", []) or []
+    inhalt_stamm = format_list_text(wert_stamm)
+    pdf.multi_cell(85, 6, inhalt_stamm, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    pdf.ln(2)
+    pdf.set_x(LEFT_MARGIN)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(90, 7, "Visuellesymptome Krone:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_x(LEFT_MARGIN + 5)
+    wert_krone = data.get("Visuellesymptome Krone", []) or []
+    inhalt_krone = format_list_text(wert_krone)
+    pdf.multi_cell(85, 7, inhalt_krone, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    pdf_output = pdf.output()
+
+        # --- Massnahmen & Empfehlungen ---
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, "Massnahmen & Empfehlungen", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.line(LEFT_MARGIN,
+             pdf.get_y(),
+             PAGE_WIDTH - RIGHT_MARGIN,
+             pdf.get_y()
+             )
+    
+    pdf.ln(3)
+
+    Massnahmen = [("Kontrollinterval", "Kontrollinterval")]
+    for label, key in Massnahmen:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(50, 8, f"{label}:") 
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, text=str(data.get(key, "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    Empfehlung = [("Empfohlene Maßnahmen", "Empfohlene Maßnahmen")]
+
+    pdf.set_x(LEFT_MARGIN)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(90, 7, "Empfohlene Maßnahmen:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_x(LEFT_MARGIN + 5)
+    wert_Empfehlung = data.get("Empfohlene Maßnahmen", []) or []
+    inhalt_Empfehlung = format_list_text(wert_Empfehlung)
+    if data.get("Empfohlene Maßnahmen"):
+        pdf.multi_cell(85, 7, inhalt_Empfehlung, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    else :
+        pdf.cell(90, 7, "Keine Maßnahmen erforderlich", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        
+
+     # --- Bemerkungen --- 
+    pdf.ln (5) 
+    pdf.set_x(LEFT_MARGIN)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, "Bemerkungen", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.line(LEFT_MARGIN,
+             pdf.get_y(),
+             PAGE_WIDTH - RIGHT_MARGIN,
+             pdf.get_y()
+             )
+    
+    pdf.ln(3) 
+    pdf.set_font("Helvetica", "", 11)
+
+    if data.get("Bemerkung"):
+        pdf.multi_cell(CONTENT_WIDTH, 6, str(data.get("Bemerkung", "-")), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    else :
+        pdf.cell(0, 8, "Keine Angaben", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+  
+
+    # --- Unterschreiben ---
+    # unterschreiben sebelah kanan diakhir input bemerkungen
+    ttd_path = None
+
+    if ttd_file:
+        file_id = str(uuid.uuid4())
+        ttd_path = f"ttd_{file_id}.png"
+
+        with open(ttd_path, "wb") as f:
+            f.write(ttd_file.getbuffer())
+
+    pdf.ln(15)
+
+    lebar_kolom_ttd = 60
+    posisi_x_ttd = PAGE_WIDTH - RIGHT_MARGIN - lebar_kolom_ttd
+
+    pdf.set_x(posisi_x_ttd)
+    pdf.set_font("helvetica", "", 10)
+
+    # tanggal
+    datum_text = f"Bielefeld, {data.get('Kontroldatum', '-')}"
+    pdf.cell(lebar_kolom_ttd, 10, datum_text, new_x=XPos.LEFT, new_y=YPos.NEXT, align="L")
+
+    pdf.ln(20)
+
+    # gambar tanda tangan jika ada
+    if ttd_path:
+        try:
+            pdf.image(ttd_path, x=posisi_x_ttd, y=pdf.get_y() - 20, w=40)
+        except Exception as e:
+            print("Unterschrift fehlt:", e)
+
+    # garis bawah
+    pdf.set_x(posisi_x_ttd)
+    pdf.line(posisi_x_ttd, pdf.get_y(), PAGE_WIDTH - RIGHT_MARGIN, pdf.get_y())
+
+    pdf.cell(lebar_kolom_ttd, 5, "Unterschrift Prüfer", new_x=XPos.LEFT, new_y=YPos.NEXT, align="L")
+
+
+    
+    # --- dOKUMENTASION fOTO & STANDORT ---
+    if image_file is not None or map_image_stream is not None:
+        pdf.add_page()
+        
+        #Judul halaman Foto
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 10, "Dokumentation & Standort", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(5)
+
+        # menentukan posisi y awal setelah judul
+        y_start_foto = pdf.get_y()
+        lebar_foto = 90  # Maximalbreite für das Foto
+
+        # Foto-Camera oder Upload
+        pdf.set_xy(LEFT_MARGIN, y_start_foto)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(lebar_foto, 8, "Foto des Baumes", align="L")
+
+        try:
+                img= Image.open(image_file)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+
+
+                tmp_path = ""
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    img.save(tmp.name, format="JPEG")
+                    tmp_path = tmp.name
+
+                temp_files.append(tmp_path)
+
+                pdf.image(tmp_path,
+                    x=LEFT_MARGIN,
+                    y=y_start_foto + 10,
+                    w=lebar_foto
+                    )
+                    
+                os.unlink(tmp_path)
+
+        except Exception as e:
+                st.warning(f"Foto konnte nicht in PDF eingebettet werden: {e}")
+
+        # SATELLITENBILD
+    if map_image_stream is not None:
+        try:
+            #pindahkan kursor ke kanan pada y yg sama
+            pdf.set_xy(PAGE_WIDTH / 2 + 5,  y_start_foto)  # Etwas rechts neben dem Foto-Titel
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.cell(lebar_foto, 8, "Baumstandort (Satellit)", align="L")
+
+            map_image_stream.seek(0)
+            
+            # Prüfen, ob es wirklich ein Bild ist
+            test_img = Image.open(map_image_stream)
+            test_img.verify() # Validiert das Bild
+            map_image_stream.seek(0) # Zurücksetzen nach verify()
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                tmp.write(map_image_stream.getvalue())
+                tmp_path = tmp.name
+            
+            temp_files.append(tmp_path)
+
+            pdf.image(tmp_path,
+                x=PAGE_WIDTH / 2 + 5,
+                y=pdf.get_y()+10,
+                w=lebar_foto
+                )
+            
+            os.unlink(tmp_path)
+
+        except Exception as e:
+            st.warning(f"Kartenbild konnte nicht in PDF eingebettet werden: {e}")
+            
+        # atur ulang posisi y ke bawah foto agar teks selanjutnya tidak menimpa foto
+        pdf.set_y(y_start_foto + 85)  # 15mm Puffer nach dem Foto    
+        
+    pdf_bytes = pdf.output()
+
+    for file in temp_files:
+        try:
+            os.unlink(file)
+        except:
+            pass
+
+    return pdf_bytes
 
 ## a. Liste der Bäume
 baum_optionen = [
@@ -260,7 +445,7 @@ baum_optionen = [
     "Vogelkirsche (Prunus avium)", "Nordmanntanne (Abies nordmanniana)",
     "schwarzkiefer (Pinus nigra)","Thunja (Thuja occidentalis)",
     "Ginkgo (Ginkgo biloba)",
-    "*Sonstige / Unbekannt"
+    "Sonstige / Unbekannt"
 ]
 
 ## b. Visuelle Kontrolle (Symptomerkennung)
@@ -271,65 +456,135 @@ Wurzelbereich_optionen = [
     "Kappungen von Wurzeln", "Würgewurzeln", "Adventivwurzeln",
     "Auffallende Ausformungen", "Bodenrisse (Bodenaufwölbungen)",
     "Insekten", "Baustellen", "Bodenauftrag", "Bodenabtrag",
-    "Bodenverdichtung oder Bodenversiegelung", "Keine gefährliche Visuelle Symptome erkannt"
+    "Bodenverdichtung oder Bodenversiegelung", "Keine gefährliche Visuelle Symptome erkannt",
+    "Faulstelle", "Beulen / Wulste", "Ausfluss",
+    "Stockaustriebe", "Höhlungen", "Wuchsanomalien",
+    "Freiliegende Wurzel", "Freiliegende beschädigte Wurzel",
+    "Einwalungen",
     ]
 
 Stammbereich_optionen = [
-    "Pilzfruchtkörper", "offene Höhlungen", "Spechtlöcher", "Fremdkörper", 
-    "Rindenverlust", "Beulen", "Schrägstand", "Stammsicherungen", 
-    "Anfahrschaden", "Astungswunden", "Zwiesel", "Höhlungen", "Risse", "Borkenabhebung", 
-    "Rindenverletzungen", "Rindenveränderungen", "Rindenveränderungen mit Pilzbefall", 
-    "Rindenveränderungen mit Pilzbefall, eingerissen", "Rindenveränderungen mit Pilzbefall, eingerissen und eingefault",
-    "Baumfremder Bewuchs", "Stammaustriebe", "bgestorbene Rinde", 
-    "Leckstellen", "Ausfluss", "nässende Flecken", "Wülste", "Rippen", "Beulen",
+    "Pilzfruchtkörper", 
+    "offene Höhlungen",
+    "Spechtlöcher", 
+    "Fremdkörper", 
+    "Rindenverlust", 
+    "Blitzrinne",
+    "Schrägstand", 
+    "Stammsicherungen", 
+    "Anfahrschaden", 
+    "Astungswunden", 
+    "Einwalungen"
+    "Zwiesel", 
+    "Höhlungen", 
+    "Spechlocher / Nisthohlen",
+    "Borkenabhebung", 
+    "Rindenverletzungen", 
+    "Rindenveränderungen", 
+    "Rindenveränderungen mit Pilzbefall", 
+    "Rindenveränderungen mit Pilzbefall, eingerissen", 
+    "Rindenveränderungen mit Pilzbefall, eingerissen und eingefault",
+    "Baumfremder Bewuchs", 
+    "Stammaustriebe", 
+    "Abgestorbene Rinde", 
+    "Faulstelle",
+    "Leckstellen", 
+    "Ausfluss", 
+    "Nässende Flecken", 
+    "Wülste", 
+    "Risse / Rippen", 
+    "Beulen",
+    "Vergabelung / Zwiesel",
+    "Vergabelung / Zwiesel eingefault",
+    "Vergabelung / Zwiesel eingewachsene Rinde",
+    "Vergabelung / Zwiesel eingerissen",
     "Keine gefährliche Visuelle Symptome erkannt"
 ]
 
 Kronen_optionen = [
-    "Abgestorbene Rinde", "Pilzfruchtkörper", "Kronendeformationen", 
-    "Schädlingsbefall", "Zwieselbildung", "Totäste (> 5 cm Durchmesser ab Astbasis)", 
-    "Astabbrüche", "Astungswunden", "Astausbrüche", "Wunden (Teil-)überwallt", 
-    "Wunden Eingefault", "Eingefaulte Äste", "Kronensicherungen", "Vergabelungen (U-Zwiesel) ohne eingewachsene Rinde", 
-    "Vergabelungen (V-Zwiesel) mit eingewachsener Rinde", "Vergabelungen (V-Zwiesel) mit eingewachsener Rinde, eingerissen", 
-    "Fehlentwicklungen in der Krone", "Kappungsstellen überwallt",
-    "Kappungsstellen eingefault", "Kappungsstellen mit Pilzbefall", 
-    "Kappungsstellen mit Pilzbefall, eingerissen", "Kappungsstellen mit Pilzbefall, eingerissen und eingefault", 
-    "kappungstellen nicht überwallt", "kappungsstellen nicht überwallt, eingefault", 
-    "kappungsstellen nicht überwallt, mit Pilzbefall", "kappungsstellen nicht überwallt, mit Pilzbefall, eingerissen", 
-    "kappungsstellen nicht überwallt, mit Pilzbefall, eingerissen und eingefault",
-    "Unglücksbalken", "Unglücksbalken mit Pilzbefall", "Unglücksbalken mit Pilzbefall, eingerissen", 
-    "Unglücksbalken mit Pilzbefall, eingerissen und eingefault", "Unglücksbalken nicht überwallt", 
-    "Unglücksbalken nicht überwallt, eingefault", "Unglücksbalken nicht überwallt, mit Pilzbefall", 
-    "Unglücksbalken nicht überwallt, mit Pilzbefall, eingerissen", "Unglücksbalken nicht überwallt, mit Pilzbefall, eingerissen und eingefault",
-    "Specht-/Nisthöhlen", "Specht-/Nisthöhlen mit Pilzbefall", 
-    "Specht-/Nisthöhlen mit Pilzbefall, eingerissen", "Specht-/Nisthöhlen mit Pilzbefall, eingerissen und eingefault", 
-    "Specht-/Nisthöhlen nicht überwallt", "Specht-/Nisthöhlen nicht überwallt, eingefault", "Specht-/Nisthöhlen nicht überwallt, mit Pilzbefall", 
+    "Abgestorbene Rinde",
+    "Pilzfruchtkörper",
+    "Kronendeformationen", 
+    "Schädlingsbefall",
+    "Zwieselbildung",
+    "Totholz",
+    "Ausfluss",
+    "Astungswunden",
+    "Astausbrüche",
+    "Wunden (Teil-)überwallt", 
+    "Wunden Eingefault", "Eingefaulte Äste", "Kronensicherungen",
+    "Vergabelungen (U-Zwiesel) ohne eingewachsene Rinde", 
+    "Vergabelungen (V-Zwiesel) mit eingewachsener Rinde",
+    "Vergabelungen (V-Zwiesel) mit eingewachsener Rinde, eingerissen", 
+    "Fehlentwicklungen in der Krone",
+    "Kappungsstellen überwallt",
+    "Kappungsstellen eingefault",
+    "Kappungsstellen mit Pilzbefall", 
+    "Kappungsstellen mit Pilzbefall, eingerissen",
+    "Kappungsstellen mit Pilzbefall, eingerissen und eingefault", 
+    "Kappungstellen nicht überwallt", "kappungsstellen nicht überwallt, eingefault", 
+    "Kappungsstellen nicht überwallt, mit Pilzbefall",
+    "Kappungsstellen nicht überwallt, mit Pilzbefall, eingerissen", 
+    "Kappungsstellen nicht überwallt, mit Pilzbefall, eingerissen und eingefault",
+    "Unglücksbalken", "Unglücksbalken mit Pilzbefall",
+    "Unglücksbalken mit Pilzbefall, eingerissen", 
+    "Unglücksbalken mit Pilzbefall, eingerissen und eingefault",
+    "Unglücksbalken nicht überwallt", 
+    "Unglücksbalken nicht überwallt, eingefault",
+    "Unglücksbalken nicht überwallt, mit Pilzbefall", 
+    "Unglücksbalken nicht überwallt, mit Pilzbefall, eingerissen",
+    "Unglücksbalken nicht überwallt, mit Pilzbefall, eingerissen und eingefault",
+    "Specht-/Nisthöhlen",
+    "Specht-/Nisthöhlen mit Pilzbefall", 
+    "Specht-/Nisthöhlen mit Pilzbefall, eingerissen",
+    "Specht-/Nisthöhlen mit Pilzbefall, eingerissen und eingefault", 
+    "Specht-/Nisthöhlen nicht überwallt",
+    "Specht-/Nisthöhlen nicht überwallt, eingefault",
+    "Specht-/Nisthöhlen nicht überwallt, mit Pilzbefall", 
     "Specht-/Nisthöhlen nicht überwallt, mit Pilzbefall, eingerissen", 
     "Specht-/Nisthöhlen nicht überwallt, mit Pilzbefall, eingerissen und eingefault",
     "Keine gefährliche Visuelle Symptome erkannt", 
-    "Baumfremder Bewuchs", "Lichtraumprofil",
-    "ungewöhnliche Blattverfärbungen", "ungewöhnliche Blattabwurf", "ungewöhnliche Blattaustrieb",
-    "überlange asten", "überlange Äste mit Pilzbefall", "überlange Äste mit Pilzbefall, eingerissen",
-    ]
+    "Baumfremder Bewuchs",
+    "Lichtraumprofil",
+    "Ugewöhnliche Blattverfärbungen",
+    "Ungewöhnliche Blattabwurf",
+    "Ungewöhnliche Blattaustrieb",
+    "Überlange Aste",
+    "Überlange Äste mit Pilzbefall",
+    "Überlange Äste mit Pilzbefall, eingerissen",
+    "Wipfeldürre",
+    "Kronensicherung",
+    "Absenkfalten",
+    "Risse / Rippen",
+    "Hohlungen",
+    "Blitzrinne",
+    "Einwalungen",
+    "Faulstelle / Astausbruche"]
 
 ##c. empfohlene Maßnahmen
 maßnahmen_optionen = [
     "Trimmen", "Düngen", "Bewässerung", "Pestizid-Anwendung", "Entfernung",
-    "Totholzenfestigung", "Stammsicherung", "Kronensicherung", "Baumstütze",
-    "Baumfällung", "Keine Maßnahmen erforderlich", "Andere Maßnahme"
+    "Stammsicherung", "Baumstütze",
+    "Baumfällung", "Keine Maßnahmen erforderlich", 
+    "Totholzbeseitigung", "Kronensicherung einbauen",
+    "Astbruch entfernen", "Sicherung kontrolieren",
+    "Frembewuchs entfernen", "Oberlange Aste einkürzen",
+    "Kopfbaum schneiden", "Hubsteigerkontrolle"
+    "Andere Maßnahme"
 ]
 
 ## d. Standort
-Standort = [ "Parkplatz", "Straße", "Garten", "Wald", "Feld", "Andere" ]
+Standort_optionen = [ "Parkplatz", "Straße", "Garten", "Wald", "Feld", "Andere" ]
 
 ## e. Entwicklungsphase
-Entwicklungsphase = ["Jungephase", "Altephase", "Reifphase", "Absterbephase"]
+Entwicklungsphase_optionen = ["Jungephase", "Altephase", "Reifphase", "Absterbephase"]
                      
 ##f. Vitalität / Zustand
-Vitalität = ["Vital", "Mittel", "Gering vital", "Absterbend"]
+Vitalität_optionen = ["Vital", "Mittel", "Gering vital", "Absterbend"]
 
 ## g. Verkehrssicherheit
-Verkehrssicherheit = ["Keine Gefahr", "Geringe Gefahr", "Mittlere Gefahr", "Hohe Gefahr", "Unmittelbare Gefahr"]
+Verkehrssicherheit_optionen = ["Verkehrssicher", "Verkehrssicher Wiederherstelbar", 
+                               "Geringe Gefahr", "Mittlere Gefahr", "Hohe Gefahr", "Unmittelbare Gefahr"]
 
 ## h. ...
 Stammumpfang = float
@@ -337,10 +592,9 @@ Stammdurchmesser = float
 Baumhöhe = float
 kronendurchmesser = float   
 
-## i. kontrolintervall
-Kontrollintervall = ["sofort", " 6 Monate", "1 Jahr",
-                     "2 Jahre", "3 Jahre", "5 Jahre",
-                     "10 Jahre", "Individuell festlegen"]
+## i. Kontrollinterval
+Kontrollinterval_optionen = ["Halbjährlich", "Jährlich", "Einundeinhalbjährlich",
+                     "Zweijährlich", "Individuell festlegen"]
 
 ## j. Judul tiap kateegori
 Kundendaten = " Kundendaten"
@@ -353,7 +607,7 @@ Unterschrift = "Unterschrift"
 
 # --- 3. STREAMLIT UI ---
 st.set_page_config(page_title="Baumprotokoll Generator", layout="wide")
-st.title("🌳 Baumkontroll-Protokoll Generator")
+st.title("🌳 VTA Baumkontrolle-Protokoll Generator")
 
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
 
@@ -367,32 +621,38 @@ with st.expander("Firmenprofil-Einstellungen"):
 
 
 # A. STANDORT ERFASSEN
-st.subheader("📍 1. Standort & Foto")
+if "sat_img" not in st.session_state:
+    st.session_state.sat_img = None
 
-# Karte mit "LocateControl" für den aktuellen Standort
-m = folium.Map(location=[52.52, 13.40], zoom_start=15)
-LocateControl(auto_start=False).add_to(m) # Fügt den "Wo bin ich"-Button hinzu
-m.add_child(folium.LatLngPopup())
+st.subheader("📸 Dokumentation & Standort")
 
-map_output = st_folium(m, height=300, width=500, key="map")
+# Karte zum Anklicken
+st.subheader("📍 Standort auf Karte markieren")
+m = folium.Map(location=[51.16, 10.45], zoom_start=6)
+map_data = st_folium(m, width=800, height=400)
 
-selected_lat, selected_lng = None, None
-sat_image_url = None
+if map_data and map_data.get("last_clicked"):
+    lat = map_data["last_clicked"]["lat"]
+    lon = map_data["last_clicked"]["lng"]
+    
+    # Bild von Mapbox holen und im SessionState speichern
+    st.session_state.sat_img = get_satellite_image(lat, lon)
+    
+    if st.session_state.sat_img:
+        st.success("Standort erfasst und Satellitenbild bereit!")
 
-if map_output and map_output.get("last_clicked"):
-    selected_lat = map_output["last_clicked"]["lat"]
-    selected_lng = map_output["last_clicked"]["lng"]
-    st.success(f"Position gewählt: {selected_lat:.5f}, {selected_lng:.5f}")
-    mapbox_token = "DEIN_MAPBOX_TOKEN"
-    sat_image_url = f"https://mapbox.com{selected_lng},{selected_lat},18,0/600x600?access_token={mapbox_token}"
+with st.expander("📸 Fotoaufnahme"):
+    # Nutze camera_input für den direkten Zugriff auf die Handykamera
+    camera_photo = st.camera_input("Baum fotografieren")
+    
+    # Optionaler Upload, falls man ein altes Foto wählen will
+    uploaded_photo = st.file_uploader("Oder Foto aus Galerie wählen", type=["jpg", "png", "jpeg"])
 
-        
-# B. FOTO AUFNEHMEN
-st.subheader("📸 2. Baum-Foto")
-img_file = st.camera_input("Foto aufnehmen")
+    # Bestimme, welches Foto genutzt werden soll
+    final_photo = camera_photo or uploaded_photo
 
-# C. FORMULAR
-st.subheader("📝 3. Protokoll-Details")
+# B. FORMULAR
+st.subheader("📝 2. Protokoll-Details")
 with st.form("kataster_form"):
 
     st.write("👤 **Kundendaten**")
@@ -410,7 +670,7 @@ with st.form("kataster_form"):
     search_id = st.text_input("Kataster-Nummer", key="b_id", value="")
     baum_id = st.text_input("Baum-Nummer", key="baum_id", placeholder="z.B. B-001")
     baumart = st.selectbox("Baumart", options=sorted(baum_optionen), key="baumart")
-    Standort = st.selectbox("Standort", options=sorted(Standort), key="Standort")
+    Standort = st.selectbox("Standort", options=sorted(Standort_optionen), key="Standort")
     Baumhöhe = st.number_input("Baumhöhe (m)", min_value=0.0, step=0.1, key="baumhöhe")
     Stammumpfang = st.number_input("Stammumfang (cm)", min_value=0.0, step=0.1, key="stammumfang")
     Stammdurchmesser = (Stammumpfang / 3.14159) / 100  # Umrechnung von cm zu m und Berechnung des Durchmessers
@@ -423,10 +683,13 @@ with st.form("kataster_form"):
 
 
     st.write("👁️ **Visuelle Kontrolle (Symptomerkennung)**")
-    Vitalität = st.selectbox("Vitalität", options=sorted(Vitalität), key="vitalität")
     vWurzelbereich = st.multiselect("Wurzelbereich", options=sorted(Wurzelbereich_optionen), default=[])
     vStammbereich = st.multiselect("Stammbereich", options=sorted(Stammbereich_optionen), default=[])
     vKronen = st.multiselect("Kronen", options=sorted(Kronen_optionen), default=[])
+    Vitalität = st.selectbox("Vitalität", options=sorted(Vitalität_optionen), key="vitalität")
+    Verkehrssicherheit = st.selectbox("Verkehrssicherheit", options=sorted(Verkehrssicherheit_optionen), key="verkehrssicherheit")
+    Entwicklungsphase = st.selectbox("Entwicklungsphase", options=sorted(Entwicklungsphase_optionen), key="entwicklungsphase")
+    
 
 
 
@@ -436,21 +699,22 @@ with st.form("kataster_form"):
 
     st.write("🛠️ **Maßnahmen & Empfehlungen**")
     maßnahmen = st.multiselect("Empfohlene Maßnahmen", options=sorted(maßnahmen_optionen), default=[])
-    kontrolrolintervall = st.selectbox("Kontrollintervall", options=sorted(Kontrollintervall), key="kontrollintervall")
+    Kontrollinterval = st.selectbox("Kontrollinterval", options=sorted(Kontrollinterval_optionen), key="Kontrollinterval")
     bemerkung = st.text_area("Bemerkungen")
-    
 
+    st.subheader("Digitales Unterschrift einfügen")
+    ttd_file = st.file_uploader("Unterschrift hochladen", type=["png","jpg","jpeg"])
+    if ttd_file:
+        with open("ttd.png", "wb") as f:
+            f.write(ttd_file.getbuffer())
 
     # Formular abschicken
-    submitted = st.form_submit_button("📋 Protokoll generieren")
-
-
-    
+    submitted = st.form_submit_button("📋 Protokoll generieren") 
 
 # --- 4. LOGIK NACH ÜBERMITTLUNG ---
 if submitted:
-        # 1. Daten sammeln
-    data_for_pdf = {
+    # 1. Daten sammeln
+    data_for_pdf= {
         "Firmennamen": nama_perusahaan,
         "Firmenadresse": alamat_perusahaan,
         "Email Perusahaan": email_perusahaan,
@@ -466,57 +730,31 @@ if submitted:
         "Stammdurchmesser": f"{Stammdurchmesser:.2f} m",
         "Kronendurchmesser": f"{kronendurchmesser} m",
         "Vitalität": Vitalität,
-        "Visuallesymptome Wurzel": ", ".join(vWurzelbereich) if vWurzelbereich else "Keine gefährliche Visuelle Symptome erkannt",
+        "Visuellesymptome Wurzel": ", ".join(vWurzelbereich) if vWurzelbereich else "Keine gefährliche Visuelle Symptome erkannt",
         "Visuellesymptome Stamm": ", ".join(vStammbereich) if vStammbereich  else "Keine gefährliche Visuelle Symptome erkannt",
-        "Visuallesymptome Krone": ", ".join(vKronen) if vKronen else "Keine gefährliche Visuelle Symptome erkannt",
-        "Maßnahmen": ", ".join(maßnahmen),
-        "Kontrollintervall": kontrolrolintervall,
+        "Visuellesymptome Krone": ", ".join(vKronen) if vKronen else "Keine gefährliche Visuelle Symptome erkannt",
+        "Entwicklungsphase": Entwicklungsphase,
+        "Verkehrssicherheit": Verkehrssicherheit,
+        "Empfohlene Maßnahmen": ", ".join(maßnahmen),
+        "Kontrollinterval": Kontrollinterval,
         "Bemerkung": bemerkung,
-        "Koordinaten": f"{selected_lat}, {selected_lng}" if selected_lat else "Nicht gesetzt"
+        "TTD_Pfad": "ttd.png" if ttd_file else None,
     }
+  
 
-
-# Gambar satelit
-if selected_lat and selected_lng:
-    # Bounding Box um die Koordinaten
-    delta = 0.001 
-    bbox = f"{selected_lng-delta},{selected_lat-delta},{selected_lng+delta},{selected_lat+delta}"
-    
-    # Korrekte Basis-URL für den Export-Service
-    base_url = "https://arcgisonline.com"
-    
-    # Parameter sauber zusammenfügen
-    sat_url = (
-        f"{base_url}?bbox={bbox}"
-        f"&bboxSR=4326"        # Korrekter Code für WGS84
-        f"&size=600,600"
-        f"&format=png"
-        f"&f=image"
+    # Hier werden das Foto und der Karten-Stream übergeben
+    pdf_content = create_pdf(
+        data=data_for_pdf,
+        logo_file=logo_file,     # Das Firmenlogo (sofern hochgeladen)
+        image_file=final_photo,     # Das finale Foto (Kamera oder Upload)
+        map_image_stream=st.session_state.sat_img, # Das Mapbox-Satellitenbild (sofern Standort gewählt)
     )
-else:
-    sat_url = None
-
-
-    # --- 5. PDF erstellen (HIER rufen wir die Funktion auf!)
-if st.button("Protokoll generieren"):
-    try:
-        # Hier rufst du deine Funktion auf
-        pdf_bytes = create_pdf(
-            data_for_pdf=data_for_pdf, 
-            image_file=img_file, 
-            sat_url=sat_url, 
-            logo_file=logo_file
-        )
-        
-        # Wenn alles geklappt hat, speichern wir es im "Gedächtnis" (Session State)
-        st.session_state.pdf_ready = pdf_bytes
-        st.success("✅ Protokoll bereit zum Download!")
-
-        st.download_button(
-            label="📄 PDF Herunterladen",
-            data=data_for_pdf,
-            file_name=f"Baumprotokoll_{kontroldatum}_{kunde_name.replace(' ', '_')}.pdf",
+    
+    # DOWNLOAD-BUTTON ANZEIGEN
+    st.success("✅ Protokoll erfolgreich erstellt!")
+    st.download_button(
+            label="📄 PDF HERUNTERLADEN",
+            data=bytes(pdf_content) if isinstance(pdf_content, (bytearray, bytes)) else pdf_content.encode('latin-1'),
+            file_name=f"Baumprotokoll_{date.today()}.pdf",
             mime="application/pdf"
-        )
-    except Exception as e:
-        st.error(f"Fehler bei der PDF-Erstellung: {e}")
+    )
