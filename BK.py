@@ -119,7 +119,7 @@ def create_pdf(data, image_file=None, logo_file=None, map_image_stream=None):
     # --- TITEL ---
     pdf.ln(10)
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "Baumkontrolle (VTA I) nach FLL-Richtlinien", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
+    pdf.cell(0, 10, "Visuelle Beurteilung (VTA I) nach FLL-Richtlinien", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
     
     # --- KUNDENDATEN ---
     pdf.ln(5)
@@ -607,7 +607,7 @@ Unterschrift = "Unterschrift"
 
 # --- 3. STREAMLIT UI ---
 st.set_page_config(page_title="Baumprotokoll Generator", layout="wide")
-st.title("🌳 VTA Baumkontrolle-Protokoll Generator")
+st.title("🌳 Digitaler FLL-Baumkontroll-Assistent (VTA Prüfstufe 1))
 
 st.info("Dieses Tool speichert keine Daten. Füllen Sie das Formular aus und laden Sie das PDF direkt herunter.")
 
